@@ -24,6 +24,7 @@ If you want to report any issues, please contact us on Discord or on the Issues 
 #### Pro's
 Barely uses any hardware resources <br>
 (nearly) Useful for daily activities <br>
+Supports older hardware <br>
 (really it I could think of😭)
 
 #### Con's
