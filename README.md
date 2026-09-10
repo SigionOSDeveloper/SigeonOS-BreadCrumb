@@ -1,7 +1,7 @@
 # SigeonOS: BreadCrumb Release
 
 The unofficial Sigeon Operating System BreadCrumb release source code. <br>
-Any questions, suggestions or reporting something are happily accepted on [Discord](https://discord.gg/xyR4MkJc2)
+Any questions, suggestions or reporting something are happily accepted on [Discord](https://discord.gg/X9Sp5nJMPF)
 
 -----------------------------------
 
@@ -35,4 +35,4 @@ Uncommon bugs
 
 ------
 
-<sup>If you're interested on this project feel free to join our [Discord](https://discord.gg/xyR4MkJc2) - </sup> <sup>Or without joining the Discord you can get it on our [website](https://os.sigeon.xyz).<sup>
+<sup>If you're interested on this project feel free to join our [Discord](https://discord.gg/X9Sp5nJMPF) - </sup> <sup>Or without joining the Discord you can get it on our [website](https://os.sigeon.xyz).<sup>
