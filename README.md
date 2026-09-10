@@ -1,6 +1,6 @@
 # SigeonOS: BreadCrumb Release
 
-The unofficial Sigeon Operating System BreadCrumb release source code.
+The unofficial Sigeon Operating System BreadCrumb release source code. <br>
 Any questions, suggestions or reporting something are happily accepted on [Discord](https://discord.gg/xyR4MkJc2)
 
 -----------------------------------
