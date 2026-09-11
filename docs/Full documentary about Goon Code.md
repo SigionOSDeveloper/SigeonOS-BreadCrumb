@@ -1,584 +1,1277 @@
-# Goon Code: The Complete Guide
+# The Complete Goon Code Handbook
 
-A from-scratch, C-like scripting language that runs natively inside SigeonOS — with its own compiler (`gsc`), bytecode container format (`.hit`), and two execution backends.
+**A beginner-friendly, no-nonsense guide to writing Goon Code (`.gc`) programs that compile to `.hit` files and run on SigeonOS.**
+
+<hr>
+This was written by AI, expect idk.
+<hr>
+
+
+> **Read this first:** Goon Code is the little C-like language that ships with SigeonOS. You write it, you compile it with `gsc`, you get a `.hit` file, and that `.hit` file becomes an executable app — either a **console program** (text output) or a **windowed app** (draws to a window on the desktop). That's the whole game. Everything below is just filling in the details.
 
 ---
 
 ## Table of Contents
 
-1. What is Goon Code?
-2. The `.hit` Container Format
-3. The Goon Language
-4. Built-in Functions
-5. Variables and Expressions
-6. The `gsc` Compiler
-7. Running Your App
-8. Two Runtimes: Console vs. GUI
-9. The Sigeon VM (Low-Level `.hit`)
-10. Complete Example Programs
-11. Error Codes and Debugging
-12. Under the Hood
-13. Limitations and Gotchas
+1. [What even is Goon Code?](#what-even-is-goon-code)
+2. [The Two Flavours of Goon Code](#the-two-flavours-of-goon-code)
+3. [Your First Program — Hello World](#your-first-program--hello-world)
+4. [Compiling with `gsc`](#compiling-with-gsc)
+5. [Running a `.hit` File](#running-a-hit-file)
+6. [Basic Syntax Rules](#basic-syntax-rules)
+7. [Variables and Types](#variables-and-types)
+8. [Operators](#operators)
+9. [Strings and Characters](#strings-and-characters)
+10. [Control Flow — `if`, `else`, `while`](#control-flow--if-else-while)
+11. [Functions](#functions)
+12. [The Full Built-in Function List](#the-full-built-in-function-list)
+13. [Console Programs](#console-programs)
+14. [Windowed (GUI) Programs](#windowed-gui-programs)
+15. [Drawing Reference — Colours and Coordinates](#drawing-reference--colours-and-coordinates)
+16. [Filesystem Programming](#filesystem-programming)
+17. [Network Programming](#network-programming)
+18. [Permissions — What They Are and Why They Exist](#permissions--what-they-are-and-why-they-exist)
+19. [Error Codes and What They Mean](#error-codes-and-what-they-mean)
+20. [Full Worked Examples](#full-worked-examples)
+21. [Common Mistakes and How to Fix Them](#common-mistakes-and-how-to-fix-them)
+22. [Quick Reference Cheat Sheet](#quick-reference-cheat-sheet)
 
 ---
 
-## What is Goon Code?
+## What even is Goon Code?
 
-Goon Code is SigeonOS's native application language. It's a deliberately small, C-like language that compiles down to a `.hit` file — the OS's executable format. There are two distinct flavors of `.hit` files:
+Goon Code is a **small, C-like programming language** designed to run on SigeonOS. It is deliberately simple:
 
-| Flavor | Magic Header | Runtime | Best For |
-|---|---|---|---|
-| Goon Code | `GOON0001` | Source-interpreting runtime (`goon_run_hit`) | Drawing GUIs, printing text |
-| Sigeon VM | `SIGEON` | Bytecode VM (`vm_execute`) | Low-level pixel/FS/network work |
+- It looks like C — curly braces, semicolons, `int main()`.
+- It compiles down to a bytecode format stored in a `.hit` file.
+- The SigeonOS kernel contains a tiny virtual machine (the "Sigeon VM") that loads and runs that bytecode.
+- Programs can either **print text** to a terminal, or **draw graphics** inside a window, or both.
 
-Goon Code is the friendlier, higher-level path. You write C-like code, the OS compiles it, and it either:
+If you've ever used C, Go, or JavaScript, you already know 90% of the syntax. Goon Code is basically "C but only the fun parts and with training wheels."
 
-- Prints to a terminal (console mode), or
-- Opens its own window and draws shapes, text, and buttons (GUI mode).
+**Things Goon Code is NOT:**
 
-The whole design is intentionally compact — the entire language runtime in `kernel.c` is a few hundred lines, because it validates the source and then interprets it statement-by-statement. No external toolchain, no assembler, no linker. You type code on the machine, run `gsc`, and hit `run`.
+- It is **not** a full C compiler. No pointers, no `struct`, no `malloc`.
+- It is **not** Python. There's no `for` loop right now (use `while`).
+- It is **not** garbage collected. It has a fixed 8 KB string pool and fixed stacks.
+- It is **not** fast. It runs inside a VM with a step budget per frame.
+
+Keep those limits in mind and you'll have a great time.
 
 ---
 
-## The `.hit` Container Format
+## The Two Flavours of Goon Code
 
-A Goon Code `.hit` file is refreshingly simple:
+There are **two ways** to write Goon Code programs, and you need to know which one you're writing before you type a single character.
 
-```
-┌────────────────────────────────────────────┐
-│  Header (8 bytes): "GOON0001"              │
-├────────────────────────────────────────────┤
-│  Source code (plain ASCII, N bytes)        │
-│  ...                                        │
-└────────────────────────────────────────────┘
-```
+### Flavour 1 — Compiled Goon Code (the real one)
 
-- Header: exactly the 8 ASCII bytes `G O O N 0 0 0 1`.
-- Payload: the raw source text of your program. No bytecode, no compression — the source ships as-is.
+You write `.gc` source, run it through `gsc`, and get a `.hit` bytecode file. This is the full-featured path. It supports:
 
-This means a `.hit` is human-readable with any hex editor, and the runtime can show you the source when something fails.
+- Functions with typed parameters and return values
+- `if` / `else` / `while`
+- All the drawing, filesystem, and network built-ins
+- Automatic permission tracking
 
-> The Sigeon VM format uses a different 14-byte header (`SIGEON` + 8 bytes of metadata) followed by actual bytecode opcodes. That's a separate, lower-level system covered later.
+**This is what you should use 99% of the time.**
 
-### How the OS recognizes a Goon `.hit`
+### Flavour 2 — Interpreted Goon Code (the quick-and-dirty one)
+
+Some `.hit` files carry a `GOON0001` magic header and hold raw Goon Code source inside. These are read line-by-line by a tiny interpreter in the kernel. This mode is very limited:
+
+- Only `print()`, `print_num()`, `print_hex()`, and simple `int x = ...` assignments work in console mode
+- Only `window()`, `text()`, `rect()`, `circle()`, `line()`, and `button()` work in window mode
+- No `if`, no `while`, no functions, no return values
+
+**Treat it as a legacy curiosity.** If you want a real program, compile it.
+
+Everything in the rest of this document assumes you are writing **compiled Goon Code** — the real thing.
+
+---
+
+## Your First Program — Hello World
+
+Create a file called `hello.gc` with this content:
 
 ```c
-static const char goon_hit_magic[GOON_HIT_HEADER_LEN] =
-    {'G','O','O','N','0','0','0','1'};
+int main() {
+    print("Hello, world!");
+    return 0;
+}
 ```
 
-If the first 8 bytes of a file match this, the file is treated as Goon Code. Otherwise, `.hit` extension + `SIGEON` magic routes it to the bytecode VM.
+That's it. That's the whole program.
+
+- `int main()` — every Goon Code program **must** have exactly one `main` function, it must return `int`, and it must take zero arguments. No exceptions. The OS looks for it first.
+- `print(...)` — prints text to the serial console.
+- `return 0;` — every function ends when it returns, or when the closing brace is reached.
 
 ---
 
-## The Goon Language
+## Compiling with `gsc`
 
-Goon Code is a statement-per-line language. Every statement must end with a semicolon (`;`), except for structural lines (`{`, `}`, `#include`, `else`).
-
-### Source file conventions
-
-- Extension: `.gc` (Goon Code source)
-- Compiled output: `.hit`
-- Encoding: plain ASCII
-- Comments: lines starting with `//` are ignored
-- Preprocessor: only `#include <goon.h>` or `#include "goon.h"` is accepted (and is a no-op — the symbols are all built in)
-
-### Statement rules
-
-The compiler (`goon_compile_source`) enforces a handful of rules:
-
-1. Balanced parentheses and quotes. Strings must be closed, `(` must match `)`.
-2. Balanced braces. `{` and `}` must nest correctly.
-3. Trailing semicolon required on executable statements.
-4. Every statement must be "known". The validator checks against a whitelist of function names and keywords — arbitrary expressions aren't allowed at the top level.
-5. Recognized statement forms:
-   - Function calls: `print(...)`, `print_num(...)`, `print_hex(...)`, `window(...)`, `text(...)`, `rect(...)`, `circle(...)`, `line(...)`, `button(...)`
-   - Variable declarations: `int name = expr;`
-   - Control words: `if (...)`, `while (...)`, `for (...)`, `else`, `return;`, `return expr;`
-   - Braces `{` / `}`
-   - `#include` directives
-
-Unknown statements produce a compile error with the line number.
-
----
-
-## Built-in Functions
-
-All built-in functions are called as statements. Arguments are comma-separated. String arguments must be double-quoted.
-
-### Console functions (terminal output)
-
-| Function | Args | Description |
-|---|---|---|
-| `print("text")` | string | Prints text to the terminal, one line per call |
-| `print_num(expr)` | integer | Prints an integer value |
-| `print_hex(expr)` | integer | Prints a 32-bit hex value to the serial debug console |
-
-### GUI functions (window mode)
-
-These require the program to declare a window via `window(...)` first.
-
-| Function | Args | Description |
-|---|---|---|
-| `window("title", w, h)` | string, int, int | Declares the app window. Must appear once. Size clamped to 160–900 × 100–650. |
-| `text("str", x, y)` | string, int, int | Draws text at window-relative `(x, y)` |
-| `rect(color, x, y, w, h)` | int, int, int, int, int | Filled rectangle. `color` is a 24-bit RGB value. |
-| `circle(color, x, y, r)` | int, int, int, int | Filled circle |
-| `line(color, x1, y1, x2, y2)` | int, int, int, int, int | Straight line |
-| `button("label", x, y, w, h)` | string, int, int, int, int | Clickable button (fires terminal print in this build) |
-
-### Color format
-
-Colors are 24-bit RGB integers written in decimal or hex:
+Open a **Terminal** window on the SigeonOS desktop and run:
 
 ```
-0xFF0000   // red
-0x00FF00   // green
-0x0000FF   // blue
-0xFFFFFF   // white
-0x000000   // black
+gsc hello.gc -o hello.hit
 ```
 
----
+- `gsc` is the Goon Source Compiler.
+- The first argument is your `.gc` source file.
+- `-o <name>` tells it what to call the output `.hit` file.
 
-## Variables and Expressions
-
-### Declaring a variable
-
-```c
-int score = 100;
-int x = 0;
-int radius = 20;
-```
-
-Rules:
-- Only the `int` type exists.
-- Value must be assigned at declaration (no uninitialized vars).
-- Names are case-sensitive and limited to letters, digits, and `_`.
-
-### Expressions
-
-The expression evaluator supports `+`, `-`, `*`, `/` and integer literals (decimal or `0x` hex). Variables can be referenced by name.
-
-```c
-int a = 10;
-int b = a * 2 + 5;   // b = 25
-```
-
-Expression evaluation is single-pass left-to-right — no operator precedence. Parenthesize explicitly if you need a specific order.
-
-```c
-int x = 2 + 3 * 4;   // evaluates left to right: (2 + 3) * 4 = 20
-int y = 2 + (3 * 4); // still left to right: 2 + 3 then * 4 — same result, be careful
-```
-
-> If you need precedence, compute intermediate variables manually. This is a tiny runtime, not a full compiler.
-
----
-
-## The `gsc` Compiler
-
-`gsc` is the built-in Goon Source Compiler. It runs inside the SigeonOS terminal.
-
-### Syntax
+If it succeeds, you'll see:
 
 ```
-gsc <input.gc> -o <output.hit>
+gsc: 0
 ```
 
-### Wildcards
+If it fails, you'll see something like:
 
-Both input and output support the `*` wildcard for batch compilation:
+```
+gsc: line 4: expected ';'
+```
+
+That tells you the exact line where the parser choked. Fix it and recompile.
+
+### Wildcard compiling
+
+You can compile every `.gc` in the current directory at once:
 
 ```
 gsc *.gc -o *.hit
 ```
 
-This compiles every `.gc` file in the current directory to a `.hit` with the same stem. `hello.gc` → `hello.hit`.
+The `*` in the output name is replaced by the source file's basename (without the `.gc`). So `apple.gc` becomes `apple.hit`, `banana.gc` becomes `banana.hit`, and so on.
 
-### What it does
-
-1. Reads the source `.gc` file.
-2. Runs `goon_compile_source` to validate:
-   - Balanced parens/quotes/braces
-   - Line ending in `;` (where required)
-   - Every statement is recognized
-   - No stray `#include` lines besides `goon.h`
-3. On success, creates the output `.hit` with the 8-byte `GOON0001` header followed by the source.
-4. On failure, prints a diagnostic like `gsc: line 7: expected ';'`.
-
-### Example session
+You can also mix and match — for example:
 
 ```
-> gsc hello.gc -o hello.hit
-Compiled hello.gc -> hello.hit
-
-> run hello.hit
-Running: hello.hit
+gsc *.gc -o build-*.hit
 ```
+
+would produce `build-apple.hit`, `build-banana.hit`, etc.
 
 ---
 
-## Running Your App
+## Running a `.hit` File
 
-### From the terminal
-
-```
-> run hello.hit
-```
-
-or, as a shortcut:
+From the terminal, from inside the directory that contains the file:
 
 ```
-> ./hello.hit
+run hello.hit
 ```
 
-The OS loads the `.hit`, checks the `GOON0001` magic, and dispatches to `goon_run_hit`.
+or equivalently:
 
-### From the Finder / Desktop
+```
+./hello.hit
+```
 
-Double-click the `.hit` file (or its 3-letter icon on the desktop) — the OS sees the `GOON0001` header and launches it the same way. The app gets a dock icon tied to its file identity, so pinning/reopening works per-file.
+If it's a console program, the output appears right there in the terminal. If it opens a window, a window appears on the desktop. If it's broken, you get a "Hit file notice" alert saying the file is corrupted or unloadable.
+
+You can also **double-click** a `.hit` file in Finder, or on the desktop, and it will launch.
+
+To **pin** a `.hit` file to the dock, right-click it and choose **Pin to Dock**.
 
 ---
 
-## Two Runtimes: Console vs. GUI
+## Basic Syntax Rules
 
-When a Goon `.hit` runs, `goon_run_hit` scans the source for a `window(...)` call:
+These are the rules. Memorise them. They are non-negotiable.
 
-- If `window(...)` is present → GUI mode. A real window opens, and drawing statements render inside it.
-- If `window(...)` is absent → Console mode. The program opens a Terminal window and prints its output there.
-
-Console mode is useful for scripts and utilities. GUI mode is what you want for apps.
-
-### GUI mode specifics
-
-- Window size is clamped to `[160, 900] × [100, 650]`.
-- All drawing coordinates are relative to the window's content area.
-- Drawing happens on every frame automatically — you don't need a render loop.
-- Buttons currently log to the terminal when clicked (this build).
-
-### Console mode specifics
-
-- A terminal window opens if one isn't focused.
-- `print("...")` appends lines to the terminal buffer.
-- `print_num(...)` writes an integer as a decimal line.
-- `print_hex(...)` writes to the serial debug port only.
-
----
-
-## The Sigeon VM (Low-Level `.hit`)
-
-If you need *raw* pixel access, filesystem access, or network calls, you use the Sigeon VM format instead. It's a stack-based bytecode VM, not source.
-
-### Container layout
-
-```
-┌────────────────────────────────────────────┐
-│  Header (14 bytes): "SIGEON" + 8 metadata  │
-├────────────────────────────────────────────┤
-│  Bytecode (opcodes, variable-length)       │
-└────────────────────────────────────────────┘
-```
-
-### Opcodes
-
-| Opcode | Name | Operand | Effect |
-|---|---|---|---|
-| 0 | NOP | — | No-op |
-| 1 | PUSH | 4-byte int | Push immediate onto stack |
-| 2 | POP | — | Discard top of stack |
-| 3 | ADD | — | Pop 2, push sum |
-| 4 | SUB | — | Pop 2, push difference |
-| 5 | MUL | — | Pop 2, push product |
-| 6 | DIV | — | Pop 2, push quotient |
-| 7 | JMP | 4-byte addr | Unconditional jump |
-| 8 | JZ | 4-byte addr | Jump if top is zero |
-| 9 | JNZ | 4-byte addr | Jump if top is non-zero |
-| 12 | LOAD | 4-byte hash | Push variable |
-| 13 | STORE | 4-byte hash | Pop into variable |
-| 14 | SYSCALL | 4-byte hash | Call a built-in |
-| 15 | HALT | — | Stop the VM |
-| 16 | CMP | — | Compare |
-| 17–20 | LT/GT/EQ/NEQ | — | Comparisons |
-
-### Sigeon VM system calls
-
-Dispatch is by hash of the function name (or by index if you prefer). Available calls:
-
-**Drawing**
-`draw_pixel`, `draw_rect`, `draw_text`, `draw_text_center`, `draw_circle`, `draw_line`, `draw_rect_outline`
-
-**Windows**
-`win_new`, `win_close`, `win_redraw`, `win_center`, `win_title`
-
-**Input**
-`mouse_get`, `key_get`
-
-**Time**
-`ticks`, `sleep`
-
-**Debug output**
-`print`, `print_num`, `print_hex`
-
-**Filesystem**
-`fs_read`, `fs_write`, `fs_list`, `fs_mkdir`, `fs_delete`
-
-**Network**
-`http_get`, `dns_get`
-
-This format is intentionally lower-level. Most people should use Goon Code source + `gsc` unless they need a specific syscall.
-
----
-
-## Complete Example Programs
-
-### 1. Hello World (console mode)
+### Statements end with `;`
 
 ```c
-#include <goon.h>
-
-print("Hello, SigeonOS!");
-print("Goon Code is running.");
+print("one");
+print("two");
+print("three");
 ```
 
-Compile and run:
+Every statement ends with a semicolon. If you forget one, you get a compiler error on the next line.
 
-```
-> gsc hello.gc -o hello.hit
-> run hello.hit
-```
-
-### 2. Simple window with text
+### Blocks are wrapped in `{ }`
 
 ```c
-#include <goon.h>
-
-window("My App", 400, 300);
-text("Welcome to Goon Code!", 40, 40);
-text("Press close to exit.", 40, 60);
+int main() {
+    print("inside the block");
+    return 0;
+}
 ```
 
-### 3. Drawing shapes
+The opening brace starts a block; the closing brace ends it. Functions, `if` bodies, and `while` bodies all use braces.
+
+### Comments
+
+Two styles, both work:
 
 ```c
-#include <goon.h>
+// This is a single-line comment.
 
-window("Shapes Demo", 500, 400);
-
-// Background
-rect(0xFFFFFF, 0, 0, 500, 400);
-
-// Red circle
-circle(0xFF0000, 150, 150, 60);
-
-// Blue rectangle
-rect(0x0000FF, 250, 90, 180, 120);
-
-// Green line
-line(0x00FF00, 20, 350, 480, 350);
+/*
+   This is a multi-line comment.
+   It can span many lines.
+*/
 ```
 
-### 4. Using variables
+### Whitespace is free
+
+You can indent however you want. Tabs, spaces, nothing — the compiler doesn't care. Indent for humans, not for the machine.
+
+### Case matters
+
+`int` is not `INT`. `print` is not `Print`. `main` is not `Main`. Be exact.
+
+---
+
+## Variables and Types
+
+Goon Code has **five** built-in types. That's it. Five. No more.
+
+| Type     | What it stores              | Example                    |
+|----------|-----------------------------|----------------------------|
+| `int`    | A signed 32-bit integer     | `int x = 42;`              |
+| `uint`   | An unsigned 32-bit integer  | `uint y = 4000000000;`     |
+| `bool`   | `true` or `false`           | `bool ready = true;`       |
+| `char`   | A single character          | `char c = 'A';`            |
+| `string` | Text (quoted with `"`)      | `string s = "hello";`      |
+
+### Declaring a variable
 
 ```c
-#include <goon.h>
-
-window("Math Demo", 400, 300);
-
-int base = 100;
-int offset = 40;
-int total = base + offset;
-
-rect(0x3366CC, 20, 20, total, 30);
-
-int r = 30;
-int cx = 200;
-int cy = 150;
-circle(0xFFAA00, cx, cy, r);
-
-text("Done.", 20, 250);
+int score = 100;
+string name = "Sigeon";
+bool alive = true;
+char grade = 'A';
 ```
 
-### 5. Multiple colors grid
+### Declaring without initialising
 
 ```c
-#include <goon.h>
-
-window("Color Grid", 480, 360);
-
-rect(0xFF0000,  20,  20, 100, 100);
-rect(0x00FF00, 140,  20, 100, 100);
-rect(0x0000FF, 260,  20, 100, 100);
-rect(0xFFFF00,  20, 140, 100, 100);
-rect(0xFF00FF, 140, 140, 100, 100);
-rect(0x00FFFF, 260, 140, 100, 100);
-rect(0x000000,  20, 260, 100, 100);
-rect(0xFFFFFF, 140, 260, 100, 100);
-rect(0x888888, 260, 260, 100, 100);
+int counter;
 ```
 
-### 6. Button demo
+`counter` exists but its value is undefined until you assign it. Assign before you read.
+
+### Assigning later
 
 ```c
-#include <goon.h>
-
-window("Buttons", 400, 250);
-
-text("Click a button:", 30, 20);
-button("Save",   30, 60, 100, 30);
-button("Cancel", 150, 60, 100, 30);
-button("Help",   270, 60, 100, 30);
-text("Button presses log to the terminal.", 30, 120);
+int score;
+score = 10;
+score = score + 5;   // now 15
 ```
 
-### 7. Batch compile example
+### Why do I have to say the type?
 
-With three files in the current folder — `a.gc`, `b.gc`, `c.gc` — compile them all at once:
+Because Goon Code does not do type inference. You write the type. That's the deal.
 
+### Numbers
+
+Decimal and hex work:
+
+```c
+int a = 255;
+int b = 0xFF;      // same as 255
 ```
-> gsc *.gc -o *.hit
-Compiled a.gc -> a.hit
-Compiled b.gc -> b.hit
-Compiled c.gc -> c.hit
+
+There are no floats. No `1.5`. No `3.14`. Integers only.
+
+---
+
+## Operators
+
+Goon Code has the usual C-style operators.
+
+### Arithmetic
+
+| Operator | Meaning             | Example          |
+|----------|---------------------|------------------|
+| `+`      | Add                 | `3 + 4` → `7`    |
+| `-`      | Subtract            | `10 - 3` → `7`   |
+| `*`      | Multiply            | `5 * 5` → `25`   |
+| `/`      | Divide              | `10 / 3` → `3`   |
+| `%`      | Modulo (remainder)  | `10 % 3` → `1`   |
+
+**Important:** division by zero does **not** crash the program. `a / 0` evaluates to `0`, and `a % 0` evaluates to `0`. This is deliberate — it keeps broken programs from killing the whole OS.
+
+### Comparison
+
+| Operator | Meaning                |
+|----------|------------------------|
+| `==`     | Equal to               |
+| `!=`     | Not equal to           |
+| `<`      | Less than              |
+| `<=`     | Less than or equal     |
+| `>`      | Greater than           |
+| `>=`     | Greater than or equal  |
+
+All comparison operators produce a `bool`.
+
+### Logical
+
+| Operator | Meaning          |
+|----------|------------------|
+| `&&`     | Logical AND      |
+| `||`     | Logical OR       |
+| `!`      | Logical NOT      |
+
+### Unary minus
+
+```c
+int x = -5;
+```
+
+### String concatenation with `+`
+
+```c
+string greeting = "Hello, " + "world!";
+```
+
+If either side is a string, `+` does concatenation, not addition.
+
+### Assignment
+
+Just `=`. There is no `+=`, `-=`, `++`, or `--`. Write it out longhand:
+
+```c
+counter = counter + 1;
 ```
 
 ---
 
-## Error Codes and Debugging
+## Strings and Characters
 
-### Compile-time errors
+### String literals
 
-`gsc` reports errors as `gsc: line N: <reason>`. Common reasons:
+Double quotes, escape sequences supported:
 
-| Message | Cause |
-|---|---|
-| `expected ';'` | Statement missing trailing `;` |
-| `unbalanced parentheses or string` | Unclosed `(` or `"` on the line |
-| `unclosed '{'` | A `{` block was never closed |
-| `unexpected '}'` | More `}` than `{` |
-| `unknown statement` | Line isn't a recognized call/keyword/assignment |
-| `preprocessor: only <goon.h> is supported` | Stray `#define`/`#if` etc. |
-
-### Runtime error codes
-
-Defined near the top of the kernel:
-
-| Constant | Value | Meaning |
-|---|---|---|
-| `ERR_HIT_INVALID_MAGIC` | −1 | File doesn't start with `GOON0001` or `SIGEON` |
-| `ERR_HIT_TOO_SMALL` | −2 | File is under the minimum header size |
-| `ERR_HIT_NO_MEM` | −3 | No free app slot (MAX_APPS reached) |
-| `ERR_HIT_LOAD_FAIL` | −4 | Couldn't create the window |
-| `ERR_HIT_INVALID_POINTER` | −5 | Syscall got a bad pointer (Sigeon VM only) |
-| `ERR_HIT_INVALID_OPCODE` | −6 | Unknown bytecode (Sigeon VM only) |
-
-If loading fails, the OS shows an alert dialog: "This file is unable to run. It's either corrupted or something. idk."
-
-### Serial debug output
-
-`print_hex(...)` writes hex values to the serial port at `0x3F8`. You can watch them with any serial monitor at the default baud rate (115200 8N1).
-
----
-
-## Under the Hood
-
-### The compile path
-
-When you run `gsc hello.gc -o hello.hit`:
-
-1. `split_first_arg` parses the command line.
-2. The `-o` flag splits input from output.
-3. If input has a `*`, it iterates every `.gc` file in the current directory and generates a matching output name.
-4. For each file, `gsc_make_hit(dir, src_name, out_name, term)`:
-   - Reads the source node.
-   - Calls `goon_compile_source(source, len, err, err_max)`.
-   - On success, allocates an output node and writes:
-     - 8 bytes of `GOON0001` magic
-     - the raw source (up to `FS_FILE_MAX - 8` bytes)
-
-### The run path
-
-When you run a `.hit`:
-
-1. `open_file_in_app(fs_idx)` (or the terminal's `run`) checks the first 8 bytes for `GOON0001`.
-2. If matched, `dock_add_dynamic_item(APP_HIT_EXEC, fs_idx, name)` registers the app.
-3. `goon_run_hit(NULL_PTR, fs_idx)` is called:
-   - If a matching window is already open, it's focused.
-   - Otherwise, `goon_source_window_info` scans for `window(...)`.
-   - GUI mode: `win_alloc()` creates a window, its size comes from `window(...)`.
-   - Console mode: a Terminal is opened and `goon_execute_console` prints.
-4. In GUI mode, `draw_app_goon(w, cx, cy, cw, ch)` runs every frame:
-   - Rebuilds the variable table from `int` declarations.
-   - Walks each line and dispatches to the drawing primitives.
-   - Buttons are hit-tested by the mouse handler against `goon_buttons[][]`.
-
-### Why source-interpretation, not compilation?
-
-Two reasons:
-
-- **Auditability.** A `.hit` is plain text — the OS can show you exactly what it's about to run.
-- **Simplicity.** The whole runtime is a few hundred lines. No register allocation, no instruction encoding, no optimizer.
-
-It's slower than bytecode, but for GUI apps that draw a few dozen primitives per frame, it's more than fast enough.
-
----
-
-## Limitations and Gotchas
-
-- Only one type: `int`. No floats, no strings-as-variables, no arrays.
-- Expressions evaluate left-to-right with no precedence. Parenthesize deliberately.
-- Statements are line-oriented. You can't put two statements on one line.
-- No user-defined functions. There is no `func` keyword.
-- Loops (`if`/`while`/`for`) are recognized by the validator but not actually executed by the current interpreter — they're reserved for a future release. Use repeated statements or the Sigeon VM for real control flow.
-- `window(...)` must appear at most once. Multiple windows per `.hit` aren't supported.
-- Window size clamps to 900×650. Larger sizes get silently reduced.
-- Buttons currently log to a Terminal instead of triggering callbacks. Callback wiring is a future feature.
-- Source size limit is `FS_FILE_MAX - 8` bytes (~504 bytes). Keep programs short.
-- No includes beyond `goon.h`. All symbols are built in.
-- No comments other than `//` full-line. `/* */` blocks are not recognized.
-- Whitespace is trimmed aggressively. Don't rely on indentation.
-
----
-
-## Quick Reference Card
-
-```
-SOURCE FILE          .gc
-OUTPUT FILE          .hit
-MAGIC                "GOON0001" (8 bytes)
-
-COMPILE              gsc <file.gc> -o <file.hit>
-BATCH COMPILE        gsc *.gc -o *.hit
-
-RUN                  run <file.hit>
-RUN (SHORTCUT)       ./<file.hit>
-
-CONSOLE OUTPUT       print("text");
-                     print_num(expr);
-                     print_hex(expr);      // serial only
-
-WINDOW               window("title", w, h);
-
-DRAWING              text("str", x, y);
-                     rect(color, x, y, w, h);
-                     circle(color, x, y, r);
-                     line(color, x1, y1, x2, y2);
-                     button("label", x, y, w, h);
-
-VARIABLES            int name = expr;
-                     int a = 10;
-                     int b = a + 5;
-
-COLORS               0xRRGGBB
-                     0xFF0000 red, 0x00FF00 green, 0x0000FF blue
-                     0xFFFFFF white, 0x000000 black
-
-ERRORS               gsc: line N: <reason>          (compile)
-                     Alert popup with error code     (runtime)
+```c
+string a = "normal text";
+string b = "line one\nline two";
+string c = "tab\there";
+string d = "quote \"inside\"";
 ```
 
+Supported escapes: `\n` (newline), `\t` (tab), `\r` (carriage return), `\"` (quote), `\\` (backslash).
+
+### Character literals
+
+Single quotes, one character:
+
+```c
+char letter = 'A';
+char newline = '\n';
+char quote = '\'';
+```
+
+### Getting the length of a string
+
+```c
+int len = str_len("hello");   // 5
+```
+
+### Converting a number to a string
+
+```c
+string s = to_string(42);     // "42"
+```
+
+### String equality
+
+Use `==` and `!=`. The compiler emits string comparison opcodes.
+
+```c
+if (name == "Sigeon") {
+    print("matches");
+}
+```
+
+Strings are **immutable-ish**: you don't append to them in-place. Concatenation creates a new one in the string pool.
+
 ---
 
-*Goon Code — because sometimes you just want to draw a rectangle and call it a day.*
+## Control Flow — `if`, `else`, `while`
 
-<sub>This was written by AI. I am not writing a full document</sub>
+### `if`
+
+```c
+if (score > 100) {
+    print("High score!");
+}
+```
+
+### `if` / `else`
+
+```c
+if (health > 0) {
+    print("Alive");
+} else {
+    print("Dead");
+}
+```
+
+### `if` / `else if` / `else`
+
+Goon Code does **not** have `else if` as a keyword. Chain `if` inside `else`:
+
+```c
+if (score >= 90) {
+    print("A");
+} else {
+    if (score >= 80) {
+        print("B");
+    } else {
+        if (score >= 70) {
+            print("C");
+        } else {
+            print("F");
+        }
+    }
+}
+```
+
+Yes, it's verbose. Yes, that's the price of a simple compiler.
+
+### `while`
+
+```c
+int i = 0;
+while (i < 10) {
+    print_num(i);
+    i = i + 1;
+}
+```
+
+There is **no** `for` loop in Goon Code. Use `while`.
+
+There is **no** `break` or `continue`. Structure your loops so you don't need them.
+
+---
+
+## Functions
+
+You can define your own functions. They can take parameters and return values.
+
+### A simple function with no return value
+
+```c
+void greet() {
+    print("Hello!");
+}
+
+int main() {
+    greet();
+    return 0;
+}
+```
+
+### A function with parameters
+
+```c
+void greet_person(string name, int age) {
+    print("Hello, ");
+    print(name);
+    print("! You are ");
+    print_num(age);
+    println(" years old.");
+}
+
+int main() {
+    greet_person("Alice", 30);
+    greet_person("Bob", 25);
+    return 0;
+}
+```
+
+### A function that returns a value
+
+```c
+int double_it(int x) {
+    return x * 2;
+}
+
+int main() {
+    print_num(double_it(21));   // prints 42
+    return 0;
+}
+```
+
+### Rules for functions
+
+- Must have a return type — one of `int`, `uint`, `bool`, `char`, `string`, or `void`.
+- `void` means "returns nothing."
+- Non-`void` functions **must** return a value on every code path (the compiler assumes this and will warn you if not, but the safety net is limited).
+- Parameters are typed and named.
+- Up to 16 parameters.
+- `main` must be `int main()` — no parameters, returns `int`.
+
+### Calling order does not matter
+
+The compiler scans all functions first, so you can call a function that appears later in the file. Nice.
+
+---
+
+## The Full Built-in Function List
+
+These functions are provided by the OS. You do not define them. You just call them. The compiler automatically figures out which **permissions** you need (see the Permissions section below).
+
+### Output / strings
+
+| Function | Returns | Description |
+|----------|---------|-------------|
+| `print(x)` | `void` | Print `x` to the serial console. |
+| `println(x)` | `void` | Print `x` followed by a newline. |
+| `to_string(x)` | `string` | Convert an integer-ish value to a string. |
+| `str_len(s)` | `int` | Length of a string. |
+
+### Time / scheduling
+
+| Function | Returns | Description |
+|----------|---------|-------------|
+| `ticks()` | `int` | Number of timer ticks since boot (100 ticks = 1 second). |
+| `sleep(ms)` | `int` | Sleep for `ms` ticks (roughly milliseconds). Returns `1`. |
+
+### Filesystem
+
+| Function | Returns | Permission | Description |
+|----------|---------|------------|-------------|
+| `fs_read(path)` | `string` | FS read | Read a file's contents. Returns `""` if it doesn't exist. |
+| `fs_write(path, data)` | `bool` | FS write | Write `data` to `path`. Creates the file if needed. |
+| `fs_mkdir(path)` | `bool` | FS write | Create a directory. |
+| `fs_delete(path)` | `bool` | FS delete | Delete a file or directory. |
+| `fs_exists(path)` | `bool` | FS read | Does the path exist? |
+| `fs_list(path)` | `string` | FS read | List the contents of a directory, newline-separated. |
+
+### Network
+
+| Function | Returns | Permission | Description |
+|----------|---------|------------|-------------|
+| `http_get(url)` | `string` | Network | Fetch an HTTP URL. Returns the body. |
+| `dns_get(hostname)` | `string` | Network | Resolve a hostname to an IP as text. |
+
+### Graphics (window / drawing)
+
+| Function | Returns | Permission | Description |
+|----------|---------|------------|-------------|
+| `window(title, w, h)` | `int` | UI | Create a window. Returns a window handle. |
+| `draw_pixel(color, x, y)` | `int` | UI | Plot a single pixel. |
+| `draw_rect(color, x, y, w, h)` | `int` | UI | Draw a filled rectangle. |
+| `draw_text(text, color, x, y)` | `int` | UI | Draw a string at a position. |
+| `draw_circle(color, x, y, r)` | `int` | UI | Draw a filled circle. |
+| `draw_line(color, x1, y1, x2, y2)` | `int` | UI | Draw a line. |
+
+**Note the argument order for `draw_text`** — it's `(text, color, x, y)`, not `(text, x, y, color)`. Learn it.
+
+---
+
+## Console Programs
+
+A console program is a Goon Code program that doesn't create a window. It just prints.
+
+### Example — greeting script
+
+```c
+int main() {
+    print("What is your name?\n");
+    // (Note: this compiler does not have keyboard input built in,
+    //  so we just greet a hard-coded name.)
+    string name = "traveler";
+    print("Hello, ");
+    println(name);
+    return 0;
+}
+```
+
+### Example — counting
+
+```c
+int main() {
+    int i = 1;
+    while (i <= 10) {
+        print_num(i);
+        print(" ");
+        i = i + 1;
+    }
+    println("");
+    return 0;
+}
+```
+
+Output:
+
+```
+1 2 3 4 5 6 7 8 9 10 
+```
+
+### Example — simple maths helper
+
+```c
+int square(int x) {
+    return x * x;
+}
+
+int cube(int x) {
+    return x * x * x;
+}
+
+int main() {
+    int n = 5;
+    print("n = ");       println(to_string(n));
+    print("n^2 = ");     println(to_string(square(n)));
+    print("n^3 = ");     println(to_string(cube(n)));
+    return 0;
+}
+```
+
+---
+
+## Windowed (GUI) Programs
+
+A GUI program creates a window and draws into it. The window behaves like any other SigeonOS window — you can drag it, minimise it, close it.
+
+### The simplest possible window
+
+```c
+int main() {
+    window("My First App", 400, 300);
+    return 0;
+}
+```
+
+That gives you an empty 400×300 window titled "My First App".
+
+### Drawing into the window
+
+```c
+int main() {
+    window("Drawing Demo", 400, 300);
+
+    // A filled red rectangle at (50, 50), 100×80
+    draw_rect(0xFF0000, 50, 50, 100, 80);
+
+    // A filled blue circle at (250, 150) with radius 40
+    draw_circle(0x0000FF, 250, 150, 40);
+
+    // Text in white at (20, 240)
+    draw_text("Hello, Goon Code!", 0xFFFFFF, 20, 240);
+
+    return 0;
+}
+```
+
+### Drawing a line
+
+```c
+int main() {
+    window("Line Demo", 300, 300);
+    draw_line(0x00FF00, 0, 0, 299, 299);   // diagonal from top-left to bottom-right
+    return 0;
+}
+```
+
+### Putting it together — animated bar
+
+Since Goon Code has no direct frame loop other than `main`, you can use `sleep` to control animation within `main`:
+
+```c
+int main() {
+    window("Loading Bar", 420, 120);
+
+    int i = 0;
+    while (i <= 300) {
+        // Clear the bar area
+        draw_rect(0x222222, 60, 50, 300, 20);
+        // Draw the filled portion
+        draw_rect(0x00CC44, 60, 50, i, 20);
+        // Label
+        draw_text("Loading...", 0xFFFFFF, 60, 30);
+        // Wait a tick
+        sleep(1);
+        i = i + 3;
+    }
+
+    draw_text("Done!", 0xFFFFFF, 60, 90);
+    return 0;
+}
+```
+
+**How this works:** the OS repaints windows every frame. Your program draws, sleeps a tick, draws again, sleeps again. The result is animation.
+
+> **Note:** since the VM runs with a per-frame step budget, long loops with `sleep(1)` are the friendly way to animate. Avoid tight infinite loops.
+
+---
+
+## Drawing Reference — Colours and Coordinates
+
+### Colours
+
+Colours are 24-bit RGB packed into an `int`:
+
+```
+0xRRGGBB
+```
+
+Examples:
+
+| Colour  | Value       |
+|---------|-------------|
+| Black   | `0x000000`  |
+| White   | `0xFFFFFF`  |
+| Red     | `0xFF0000`  |
+| Green   | `0x00FF00`  |
+| Blue    | `0x0000FF`  |
+| Yellow  | `0xFFFF00`  |
+| Cyan    | `0x00FFFF`  |
+| Magenta | `0xFF00FF`  |
+| Orange  | `0xFF8800`  |
+| Grey    | `0x808080`  |
+
+### Coordinates
+
+- `(0, 0)` is the **top-left** of the window's content area.
+- `x` increases to the right.
+- `y` increases downward.
+- The content area starts *below* the title bar, so y=0 is right under the title.
+
+### Window size limits
+
+`window(title, w, h)` clamps your requested size to safe bounds:
+
+- Minimum width: 160
+- Minimum height: 100
+- Maximum width: 900
+- Maximum height: 650
+
+If you ask for less, you get the minimum. If you ask for more, you get the maximum.
+
+---
+
+## Filesystem Programming
+
+Filesystem paths are absolute, starting with `/`. The root holds standard directories:
+
+```
+/
+├── Desktop/
+├── Documents/
+├── Downloads/
+└── Applications/
+```
+
+### Reading a file
+
+```c
+int main() {
+    string content = fs_read("/Documents/notes.txt");
+    if (str_len(content) > 0) {
+        println("File contents:");
+        println(content);
+    } else {
+        println("File not found or empty.");
+    }
+    return 0;
+}
+```
+
+### Writing a file
+
+```c
+int main() {
+    bool ok = fs_write("/Documents/hello.txt", "This was written by Goon Code!");
+    if (ok) {
+        println("Write successful.");
+    } else {
+        println("Write failed.");
+    }
+    return 0;
+}
+```
+
+### Creating a directory
+
+```c
+int main() {
+    if (fs_mkdir("/Documents/MyFolder")) {
+        println("Created.");
+    } else {
+        println("Could not create (maybe it already exists).");
+    }
+    return 0;
+}
+```
+
+### Checking existence
+
+```c
+int main() {
+    if (fs_exists("/Desktop/Sigeon.gsv")) {
+        println("Yes, the image is there.");
+    } else {
+        println("No, it's missing.");
+    }
+    return 0;
+}
+```
+
+### Listing a directory
+
+```c
+int main() {
+    string listing = fs_list("/");
+    println("Root contains:");
+    println(listing);
+    return 0;
+}
+```
+
+`fs_list` returns names separated by `\n`.
+
+### Deleting a file
+
+```c
+int main() {
+    if (fs_delete("/Documents/old.txt")) {
+        println("Deleted.");
+    } else {
+        println("Couldn't delete — maybe it doesn't exist.");
+    }
+    return 0;
+}
+```
+
+Protected paths (the root, Desktop, Documents, Downloads, Applications themselves) cannot be deleted. That's a feature, not a bug.
+
+---
+
+## Network Programming
+
+Goon Code can make HTTP requests and resolve DNS. Every network call is **blocking** — the program waits for the response.
+
+### HTTP GET
+
+```c
+int main() {
+    string body = http_get("http://example.com/");
+    if (str_len(body) > 0) {
+        println("Got response:");
+        println(body);
+    } else {
+        println("No response (network down, DNS failed, or URL bad).");
+    }
+    return 0;
+}
+```
+
+### DNS resolution
+
+```c
+int main() {
+    string ip = dns_get("example.com");
+    if (str_len(ip) > 0) {
+        print("example.com resolves to ");
+        println(ip);
+    } else {
+        println("Could not resolve.");
+    }
+    return 0;
+}
+```
+
+### Realistic example — check if a host is up
+
+```c
+int main() {
+    string ip = dns_get("example.com");
+    if (str_len(ip) == 0) {
+        println("Host unreachable — DNS failed.");
+        return 1;
+    }
+    print("Resolved to ");
+    println(ip);
+
+    string page = http_get("http://example.com/");
+    if (str_len(page) > 0) {
+        println("Host is up.");
+        return 0;
+    } else {
+        println("Host resolved but HTTP failed.");
+        return 1;
+    }
+}
+```
+
+### Rules for network access
+
+- Network calls need the **NETWORK** permission (auto-added by the compiler when you use `http_get` or `dns_get`).
+- Only plain **HTTP** is supported. Not HTTPS. There is no TLS stack in this OS.
+- DNS uses the resolver configured by DHCP, then falls back to Google DNS (8.8.8.8) and Cloudflare (1.1.1.1).
+- Long responses are truncated into the kernel's response buffer.
+
+---
+
+## Permissions — What They Are and Why They Exist
+
+SigeonOS is a **capability-based** system. When your program is compiled, the compiler walks the whole program and records which capability bits it needs. These bits are stored in the `.hit` header. When the program tries to use a capability it hasn't been granted yet, the OS shows a **permission prompt** — and only a mouse click decides.
+
+### The permission bits
+
+| Bit | Name      | Granted by calling… |
+|-----|-----------|---------------------|
+| 0   | FS read   | `fs_read`, `fs_exists`, `fs_list` |
+| 1   | FS write  | `fs_write`, `fs_mkdir` |
+| 2   | FS delete | `fs_delete` |
+| 3   | Network   | `http_get`, `dns_get` |
+| 4   | UI        | `window`, `draw_pixel`, `draw_rect`, `draw_text`, `draw_circle`, `draw_line` |
+| 5   | Hardware  | (reserved) |
+
+### What this means for you
+
+- **You don't declare permissions.** The compiler figures it out.
+- **You don't need to check them.** If a permission is denied, the built-in returns `0` or `""` gracefully.
+- **You can't spoof them.** The header is validated before the program runs.
+
+### The user experience
+
+The first time a program calls a network function, the user sees:
+
+> **Permission required**
+> Application requests network access.
+> Make network requests.
+> `[ Allow ]` `[ Disallow ]`
+
+The user must click **Allow** with the mouse. `Enter` and `Esc` are ignored — that's intentional, so you can't accidentally approve something by typing.
+
+If the user clicks Disallow, subsequent calls to the same capability return failure values immediately.
+
+---
+
+## Error Codes and What They Mean
+
+When a `.hit` file fails to load, the OS shows a **"Hit file notice"** with an error code. Here's the decoder ring.
+
+| Code | Name                     | Meaning |
+|------|--------------------------|---------|
+| -1   | `ERR_HIT_INVALID_MAGIC`  | The file doesn't start with the right magic bytes. Not a `.hit` file, or corrupted. |
+| -2   | `ERR_HIT_TOO_SMALL`      | The file is shorter than the minimum header size. |
+| -3   | `ERR_HIT_NO_MEM`         | Too many apps loaded, or the file is too big for the blob pool. |
+| -4   | `ERR_HIT_LOAD_FAIL`      | The header is present but invalid (wrong version, bad permission bits, malformed structure). |
+| -5   | `ERR_HIT_INVALID_POINTER`| A string constant in the bytecode points outside the string pool. Recompile. |
+| -6   | `ERR_HIT_INVALID_OPCODE` | The bytecode contains an unknown opcode, or a jump lands mid-instruction. Recompile. |
+
+Almost always, codes -5 and -6 mean the `.hit` file was produced by an older/different version of `gsc`, or was hand-edited. **Recompile from source.**
+
+If your program runs but hits a runtime fault, the VM stops just that app — the OS itself keeps running. This is the "application fault containment" feature, and it's why a buggy program can't take down your desktop.
+
+---
+
+## Full Worked Examples
+
+### Example 1 — Fibonnaci printer
+
+```c
+int fib(int n) {
+    if (n < 2) {
+        return n;
+    }
+    return fib(n - 1) + fib(n - 2);
+}
+
+int main() {
+    int i = 0;
+    while (i < 15) {
+        print("fib(");
+        print_num(i);
+        print(") = ");
+        println(to_string(fib(i)));
+        i = i + 1;
+    }
+    return 0;
+}
+```
+
+### Example 2 — Write then read a file
+
+```c
+int main() {
+    string path = "/Documents/goon-test.txt";
+    string message = "Written by Goon Code at " + to_string(ticks()) + " ticks.";
+
+    if (!fs_write(path, message)) {
+        println("Write failed.");
+        return 1;
+    }
+    println("Wrote the file.");
+
+    string readback = fs_read(path);
+    println("Read back:");
+    println(readback);
+    return 0;
+}
+```
+
+### Example 3 — Draw a checkerboard
+
+```c
+int main() {
+    window("Checkerboard", 400, 400);
+
+    int cell = 40;
+    int y = 0;
+    while (y < 10) {
+        int x = 0;
+        while (x < 10) {
+            int color;
+            if (((x + y) % 2) == 0) {
+                color = 0xFFFFFF;
+            } else {
+                color = 0x000000;
+            }
+            draw_rect(color, x * cell, y * cell, cell, cell);
+            x = x + 1;
+        }
+        y = y + 1;
+    }
+    return 0;
+}
+```
+
+### Example 4 — Simple HTTP page reader
+
+```c
+int main() {
+    println("Fetching example.com ...");
+
+    string body = http_get("http://example.com/");
+
+    if (str_len(body) == 0) {
+        println("Could not fetch. Check the network.");
+        return 1;
+    }
+
+    println("Response body:");
+    println(body);
+    return 0;
+}
+```
+
+### Example 5 — Mini dashboard
+
+```c
+int main() {
+    window("Dashboard", 500, 320);
+
+    while (1 == 1) {
+        int now = ticks();
+
+        // Background
+        draw_rect(0x101820, 0, 0, 500, 320);
+
+        // Title
+        draw_text("SIGEON DASHBOARD", 0x00FFAA, 20, 20);
+
+        // Uptime bar
+        draw_text("Uptime (ticks):", 0xFFFFFF, 20, 60);
+        draw_rect(0x222222, 20, 80, 460, 24);
+        int progress = now % 460;
+        draw_rect(0x00AAFF, 20, 80, progress, 24);
+
+        // Numeric readout
+        draw_text(to_string(now), 0xFFFFFF, 20, 120);
+
+        sleep(1);
+    }
+    return 0;
+}
+```
+
+### Example 6 — Sort an array (well, a fixed set of variables)
+
+Goon Code has no arrays, so use a fixed set and swap values manually:
+
+```c
+int main() {
+    int a = 9;
+    int b = 3;
+    int c = 7;
+
+    // Sort a, b, c ascending via nested swaps
+    if (a > b) { int t = a; a = b; b = t; }
+    if (b > c) { int t = b; b = c; c = t; }
+    if (a > b) { int t = a; a = b; b = t; }
+
+    print_num(a); print(" ");
+    print_num(b); print(" ");
+    println(to_string(c));
+    return 0;
+}
+```
+
+Output:
+
+```
+3 7 9
+```
+
+---
+
+## Common Mistakes and How to Fix Them
+
+### 1. "expected ';'"
+
+You forgot a semicolon. Add one. Yes, on that line. That one.
+
+### 2. "unknown variable"
+
+You either:
+
+- Misspelled the variable name,
+- Forgot to declare it, or
+- Declared it inside a block and tried to use it outside that block.
+
+Variables are scoped to the block they're declared in.
+
+### 3. "type mismatch"
+
+You're assigning something of the wrong type. For example, storing a `string` in an `int`:
+
+```c
+int x = "hello";   // wrong
+int x = 5;         // right
+```
+
+Or passing the wrong type into a function whose parameter type doesn't match.
+
+### 4. "wrong number of arguments"
+
+You called a built-in with the wrong number of arguments. Check the built-in table above.
+
+### 5. "unknown function"
+
+You called something that isn't a built-in and isn't defined in your program. Check spelling, and remember that `main` doesn't call a function that doesn't exist.
+
+### 6. "program must define int main()"
+
+You either:
+
+- Named it `Main`, `MAIN`, or `start`,
+- Gave it parameters, or
+- Forgot to define it entirely.
+
+The correct signature is exactly:
+
+```c
+int main() { ... }
+```
+
+### 7. "argument type mismatch"
+
+You passed, say, a `string` to a function that wants an `int`. Check both sides.
+
+### 8. Program compiles but does nothing visible
+
+- A windowed program opens a window. A console program prints to the terminal.
+- If nothing appears, maybe your drawing is off-screen, or your `main` returns immediately.
+- Try adding a `sleep(50)` at the end so you can see the window before it closes.
+
+### 9. Division surprise
+
+`7 / 2` is `3`, not `3.5`. That's integer division. If you need fractional maths, multiply by 100 and keep the scale in your head.
+
+### 10. String comparison surprises
+
+Use `==` and `!=` — they work on strings correctly. Do **not** try to compare string pointers or use `<` on strings. Only `==` and `!=` are meaningful for strings.
+
+---
+
+## Quick Reference Cheat Sheet
+
+```c
+// ---- Program skeleton ----
+int main() {
+    return 0;
+}
+
+// ---- Variables ----
+int x = 5;
+uint u = 100;
+bool flag = true;
+char c = 'A';
+string s = "text";
+
+// ---- Printing ----
+print("hello");
+println("hello with newline");
+print_num(42);
+print_hex(0xDEADBEEF);
+
+// ---- Strings ----
+string greeting = "Hello, " + "world!";
+int len = str_len(greeting);
+string s = to_string(123);
+
+// ---- Control flow ----
+if (x > 0) {
+    // do this
+} else {
+    // do that
+}
+
+while (x < 10) {
+    x = x + 1;
+}
+
+// ---- Functions ----
+int add(int a, int b) {
+    return a + b;
+}
+
+void say_hello() {
+    println("hello");
+}
+
+// ---- Graphics ----
+window("Title", 400, 300);
+draw_pixel(0xFFFFFF, 10, 10);
+draw_rect(0xFF0000, 20, 20, 100, 50);
+draw_circle(0x00FF00, 200, 150, 40);
+draw_line(0x0000FF, 0, 0, 400, 300);
+draw_text("hi", 0xFFFFFF, 50, 50);
+
+// ---- Filesystem ----
+string data = fs_read("/Documents/file.txt");
+bool ok = fs_write("/Documents/file.txt", "hello");
+fs_mkdir("/Documents/NewFolder");
+bool exists = fs_exists("/Documents/file.txt");
+string listing = fs_list("/");
+fs_delete("/Documents/file.txt");
+
+// ---- Network ----
+string body = http_get("http://example.com/");
+string ip = dns_get("example.com");
+
+// ---- Time ----
+int now = ticks();
+sleep(10);   // about 100 ms
+
+// ---- Comments ----
+// single-line
+/* multi-line */
+```
+
+---
+
+## Closing Words
+
+Goon Code is **not** trying to be C. It's not trying to be Rust. It's not trying to be your next favourite language.
+
+It's a small, blunt, friendly tool for making tiny apps on a hobby operating system. It gives you enough rope to draw a rectangle, write a file, fetch a URL, and print a hello. Everything else is up to you.
+
+If you remember nothing else, remember these three things:
+
+1. **`int main()` is the entry point.** Always.
+2. **Every statement ends with `;` and every block uses `{ }`.**
+3. **`gsc file.gc -o file.hit` compiles. `run file.hit` runs.**
+
+Everything else is just details, and the details are all above.
+
+Now go build something goofy.
