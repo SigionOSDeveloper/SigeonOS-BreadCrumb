@@ -1,3 +1,6 @@
+<img width="2172" height="724" alt="SigeonOS idk" src="https://github.com/user-attachments/assets/fbd83376-420b-4246-a5d2-1f1b4e2ccdf6" />
+
+
 # SigeonOS: BreadCrumb Release
 
 The unofficial Sigeon Operating System BreadCrumb release source code. <br>
